@@ -1,0 +1,363 @@
+<title>Greatness Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: scoreboard header, then the day's entry cards, then the full week grid and the history of Friday scores. */
+:root {
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --ink: #141a2b;
+  --muted: #5c6680;
+  --line: #dde2ec;
+  --accent: #2447d4;
+  --accent-soft: #e4e9fb;
+  --good: #1f8a4c;
+  --good-soft: #def3e6;
+  --warn: #b26a00;
+  --warn-soft: #fbeed6;
+  --track: #e6e9f1;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1220; --surface: #171c2e; --ink: #e8ecf6; --muted: #98a2bd; --line: #2a3149;
+    --accent: #7f98ff; --accent-soft: #232c52; --good: #5fd08f; --good-soft: #17352a;
+    --warn: #f2b453; --warn-soft: #3a2c14; --track: #262d45; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1220; --surface: #171c2e; --ink: #e8ecf6; --muted: #98a2bd; --line: #2a3149;
+  --accent: #7f98ff; --accent-soft: #232c52; --good: #5fd08f; --good-soft: #17352a;
+  --warn: #f2b453; --warn-soft: #3a2c14; --track: #262d45; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--font-display); font-weight: 700; letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1; text-transform: uppercase; }
+h2 { font-size: 22px; text-transform: uppercase; letter-spacing: .03em; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: end; justify-content: space-between; }
+.weeknav { display: flex; align-items: center; gap: 8px; }
+.weeknav button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px; }
+.weeknav .label { min-width: 150px; text-align: center; font-weight: 600; }
+
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; grid-template-columns: auto 1fr; gap: 20px 32px; align-items: center; }
+.score { font-family: var(--font-display); font-size: 84px; font-weight: 700; line-height: .9; }
+.score small { font-size: 32px; color: var(--muted); }
+.board-meta { display: grid; gap: 10px; min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--track); color: var(--muted); }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.accent { background: var(--accent-soft); color: var(--accent); }
+.record { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn-primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 600; }
+:root[data-theme="dark"] .btn-primary { color: #0e1220; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-primary { color: #0e1220; } }
+.btn-primary[disabled] { opacity: .5; cursor: default; }
+.btn-ghost { background: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; }
+.hint { color: var(--muted); font-size: 13px; }
+
+.days { display: flex; gap: 6px; flex-wrap: wrap; }
+.days button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 14px; font-weight: 600; }
+.days button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.card .name { font-weight: 600; line-height: 1.25; }
+.card .sub { font-size: 12px; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 20px; line-height: 1; }
+.stepper input { width: 64px; height: 36px; text-align: center; font: 600 20px var(--font-display); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.bar { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.bar.hit > span { background: var(--good); }
+.weekline { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.weekline b { color: var(--ink); }
+
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; }
+th, td { padding: 10px 12px; text-align: center; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+td.total { font-weight: 700; }
+td.ok { color: var(--good); }
+td.today, th.today { background: var(--accent-soft); }
+
+textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: inherit; background: var(--surface); color: var(--ink); resize: vertical; }
+
+.history { display: grid; gap: 8px; }
+.hrow { display: grid; grid-template-columns: 120px 1fr 56px; gap: 12px; align-items: center; font-size: 14px; }
+.hrow .bar { height: 10px; border-radius: 5px; }
+.empty { color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 16px; }
+.status { font-size: 13px; color: var(--muted); min-height: 1.5em; }
+
+@media (max-width: 560px) {
+  .board { grid-template-columns: 1fr; }
+  .score { font-size: 72px; }
+  .hrow { grid-template-columns: 92px 1fr 48px; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Cruz Productions</div>
+      <h1>Greatness Tracker</h1>
+    </div>
+    <div class="weeknav">
+      <button id="prevWeek" aria-label="Previous week">‹</button>
+      <div class="label num" id="weekLabel">Week of …</div>
+      <button id="nextWeek" aria-label="Next week">›</button>
+    </div>
+  </header>
+
+  <section class="board" aria-label="Weekly score">
+    <div>
+      <div class="eyebrow">Weekly score</div>
+      <div class="score num"><span id="scoreNum">0</span><small>%</small></div>
+    </div>
+    <div class="board-meta">
+      <div class="chips" id="chips"></div>
+      <div class="record">
+        <button class="btn-primary" id="recordBtn">Record Friday score</button>
+        <span class="hint" id="recordHint">Locks in this week's totals for the history.</span>
+      </div>
+      <div class="status" id="status">Connecting to saved data…</div>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <div class="section-head">
+      <h2>Log a day</h2>
+      <div class="days" id="dayTabs" role="group" aria-label="Day"></div>
+    </div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>The week at a glance</h2>
+    <div class="tablebox"><table id="grid"></table></div>
+  </section>
+
+  <section style="display:grid;gap:10px">
+    <h2>Notes</h2>
+    <label class="hint" for="notes">Wins, who you met, what to push next week.</label>
+    <textarea id="notes" placeholder="e.g. Lunch with a new referral partner on Tuesday"></textarea>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>Friday scores</h2>
+    <div class="history" id="history"><div class="empty">No recorded weeks yet. Press “Record Friday score” at the end of the week and it shows up here.</div></div>
+  </section>
+</div>
+
+<script>
+const CATS = [
+  { key: "f2f",       name: "Face to Face",          sub: "In-person meetings",                                   goal: 15 },
+  { key: "bread",     name: "Break Bread",           sub: "Meals with contacts",                                  goal: 5 },
+  { key: "contacts",  name: "GREAT Contacts",        sub: "Referrals, referral partners, current & past clients", goal: 50 },
+  { key: "events",    name: "Events",                sub: "Networking events attended",                           goal: 2 },
+  { key: "hours",     name: "Hours Prospected",      sub: "Half hours count",                                     goal: 21, step: 0.5 },
+  { key: "thanks",    name: "Thank You Calls/Cards", sub: "Calls made or cards sent",                             goal: 10 },
+  { key: "referrals", name: "Referrals",             sub: "Referrals given or received",                          goal: 10 },
+  { key: "shows",     name: "Shows Booked",          sub: "New shows on the calendar",                            goal: 5 },
+];
+const DAYS = [["mon","Mon"],["tue","Tue"],["wed","Wed"],["thu","Thu"],["fri","Fri"]];
+
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, "0");
+const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function mondayOf(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); return x; }
+function parseIso(s) { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
+function fmtShort(d) { return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+
+let weekStart = mondayOf(new Date());
+const todayIdx = (() => { const wd = (new Date().getDay() + 6) % 7; return wd > 4 ? 4 : wd; })();
+let dayIdx = todayIdx;
+let week = blankWeek(iso(weekStart));
+let db = null, unsubWeek = null, canWrite = true;
+let history = [];
+
+function blankWeek(id) {
+  const days = {}; DAYS.forEach(([k]) => { days[k] = {}; CATS.forEach(c => days[k][c.key] = 0); });
+  return { weekOf: id, days, notes: "", recorded: false };
+}
+function totals(w) {
+  const t = {}; CATS.forEach(c => t[c.key] = DAYS.reduce((s,[k]) => s + (Number(w.days?.[k]?.[c.key]) || 0), 0));
+  return t;
+}
+function scoreOf(t) {
+  const pct = CATS.reduce((s,c) => s + Math.min(t[c.key] / c.goal, 1), 0) / CATS.length;
+  return Math.round(pct * 100);
+}
+function hits(t) { return CATS.filter(c => t[c.key] >= c.goal).length; }
+const isThisWeek = () => iso(weekStart) === iso(mondayOf(new Date()));
+
+function render() {
+  const t = totals(week), sc = scoreOf(t), h = hits(t);
+  const fri = new Date(weekStart); fri.setDate(fri.getDate() + 4);
+  $("weekLabel").textContent = `${fmtShort(weekStart)} – ${fmtShort(fri)}`;
+  $("nextWeek").disabled = isThisWeek();
+  $("scoreNum").textContent = sc;
+
+  const chips = $("chips"); chips.textContent = "";
+  const mk = (txt, cls) => { const s = document.createElement("span"); s.className = "chip " + (cls||""); s.textContent = txt; chips.append(s); };
+  mk(`${h} of ${CATS.length} goals hit`, h === CATS.length ? "good" : "accent");
+  if (week.recorded) mk(`Recorded ${week.recordedScore ?? sc}%${week.recordedAt ? " on " + new Date(week.recordedAt).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) : ""}`, "good");
+  else mk(isThisWeek() ? "Not recorded yet" : "Never recorded", "warn");
+  $("recordBtn").textContent = week.recorded ? "Re-record score" : "Record Friday score";
+  $("recordBtn").disabled = !canWrite;
+
+  // day tabs
+  const tabs = $("dayTabs"); tabs.textContent = "";
+  DAYS.forEach(([k,label], i) => {
+    const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-pressed", String(i === dayIdx));
+    b.onclick = () => { dayIdx = i; render(); }; tabs.append(b);
+  });
+
+  // cards
+  const cards = $("cards"); cards.textContent = "";
+  const dk = DAYS[dayIdx][0];
+  CATS.forEach(c => {
+    const v = Number(week.days[dk][c.key]) || 0, tot = t[c.key];
+    const card = document.createElement("div"); card.className = "card";
+    const nm = document.createElement("div"); nm.className = "name"; nm.textContent = c.name;
+    const sb = document.createElement("div"); sb.className = "sub"; sb.textContent = c.sub;
+    const st = document.createElement("div"); st.className = "stepper";
+    const minus = document.createElement("button"); minus.textContent = "−"; minus.setAttribute("aria-label", `Remove one ${c.name}`);
+    const inp = document.createElement("input"); inp.type = "number"; inp.min = "0"; inp.step = String(c.step || 1); inp.value = v; inp.id = `in-${c.key}`; inp.className = "num"; inp.setAttribute("aria-label", `${c.name} on ${DAYS[dayIdx][1]}`);
+    const plus = document.createElement("button"); plus.textContent = "+"; plus.setAttribute("aria-label", `Add one ${c.name}`);
+    [minus, inp, plus].forEach(el => el.disabled = !canWrite);
+    const stepv = c.step || 1;
+    minus.onclick = () => setVal(dk, c.key, Math.max(0, v - stepv));
+    plus.onclick = () => setVal(dk, c.key, v + stepv);
+    inp.onchange = () => setVal(dk, c.key, Math.max(0, Number(inp.value) || 0));
+    st.append(minus, inp, plus);
+    const line = document.createElement("div"); line.className = "weekline num";
+    const l1 = document.createElement("span"); l1.textContent = "Week ";
+    const b1 = document.createElement("b"); b1.textContent = `${fmtNum(tot)} / ${c.goal}`; l1.append(b1);
+    const l2 = document.createElement("span"); l2.textContent = tot >= c.goal ? "Goal hit" : `${fmtNum(c.goal - tot)} to go`;
+    line.append(l1, l2);
+    const bar = document.createElement("div"); bar.className = "bar" + (tot >= c.goal ? " hit" : "");
+    const fill = document.createElement("span"); fill.style.width = Math.min(100, tot / c.goal * 100) + "%"; bar.append(fill);
+    card.append(nm, sb, st, line, bar); cards.append(card);
+  });
+
+  // grid
+  const g = $("grid"); g.textContent = "";
+  const thead = document.createElement("thead"), hr = document.createElement("tr");
+  ["Category", ...DAYS.map(d => d[1]), "Total", "Goal"].forEach((txt, i) => {
+    const th = document.createElement("th"); th.textContent = txt;
+    if (i >= 1 && i <= 5 && i - 1 === todayIdx && isThisWeek()) th.className = "today";
+    hr.append(th);
+  });
+  thead.append(hr); g.append(thead);
+  const tb = document.createElement("tbody");
+  CATS.forEach(c => {
+    const tr = document.createElement("tr");
+    const td0 = document.createElement("td"); td0.textContent = c.name; tr.append(td0);
+    DAYS.forEach(([k], i) => { const td = document.createElement("td"); td.textContent = fmtNum(Number(week.days[k][c.key]) || 0); if (i === todayIdx && isThisWeek()) td.className = "today"; tr.append(td); });
+    const tt = document.createElement("td"); tt.className = "total" + (t[c.key] >= c.goal ? " ok" : ""); tt.textContent = fmtNum(t[c.key]); tr.append(tt);
+    const tg = document.createElement("td"); tg.textContent = c.goal; tr.append(tg);
+    tb.append(tr);
+  });
+  g.append(tb);
+
+  const notes = $("notes");
+  if (document.activeElement !== notes) notes.value = week.notes || "";
+  notes.disabled = !canWrite;
+
+  renderHistory();
+}
+function fmtNum(n) { return Number.isInteger(n) ? String(n) : n.toFixed(1); }
+
+function renderHistory() {
+  const box = $("history");
+  const rows = history.filter(w => w.recorded).sort((a,b) => b.weekOf.localeCompare(a.weekOf));
+  if (!rows.length) return;
+  box.textContent = "";
+  rows.forEach(w => {
+    const sc = w.recordedScore ?? scoreOf(totals(w));
+    const r = document.createElement("div"); r.className = "hrow num";
+    const d = document.createElement("span"); d.textContent = "Wk of " + fmtShort(parseIso(w.weekOf));
+    const bar = document.createElement("div"); bar.className = "bar" + (sc >= 100 ? " hit" : "");
+    const f = document.createElement("span"); f.style.width = Math.min(100, sc) + "%"; bar.append(f);
+    const s = document.createElement("b"); s.textContent = sc + "%"; s.style.textAlign = "right";
+    r.append(d, bar, s); box.append(r);
+  });
+}
+
+// ---- persistence ----
+let saveTimer = null, saving = Promise.resolve();
+function setVal(dk, key, v) { week.days[dk][key] = Math.round(v * 2) / 2; render(); queueSave(); }
+$("notes").addEventListener("input", (e) => { week.notes = e.target.value; queueSave(); });
+function queueSave() {
+  if (!db) { $("status").textContent = "Not saved: this view can't reach the tracker's data."; return; }
+  $("status").textContent = "Saving…";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const body = JSON.parse(JSON.stringify(week)); body.updatedAt = new Date().toISOString();
+    saving = saving.then(() => db.doc("weeks/" + week.weekOf).set(body))
+      .then(() => { $("status").textContent = "Saved."; })
+      .catch((e) => {
+        if (e && e.code === "invalid_argument") { canWrite = false; render(); $("status").textContent = "You can view this tracker but not change it."; }
+        else $("status").textContent = "Couldn't save just now. Your change will go in with the next edit.";
+      });
+  }, 500);
+}
+$("recordBtn").onclick = () => {
+  const t = totals(week);
+  week.recorded = true; week.recordedAt = new Date().toISOString();
+  week.recordedScore = scoreOf(t); week.recordedTotals = t; week.recordedBy = "page";
+  render(); queueSave();
+};
+
+function subscribeWeek() {
+  if (unsubWeek) unsubWeek();
+  const id = iso(weekStart);
+  week = history.find(w => w.weekOf === id) ? JSON.parse(JSON.stringify(history.find(w => w.weekOf === id))) : blankWeek(id);
+  normalize(week);
+  render();
+  if (!db) return;
+  unsubWeek = db.doc("weeks/" + id).onSnapshot((snap) => {
+    if (snap.metadata.hasPendingWrites) return;
+    if (snap.exists) { const d = JSON.parse(JSON.stringify(snap.data())); normalize(d); if (d.weekOf === iso(weekStart)) { week = d; render(); } }
+  }, () => { $("status").textContent = "Lost the connection to saved data. Reload to reconnect."; });
+}
+function normalize(w) {
+  w.days = w.days || {};
+  DAYS.forEach(([k]) => { w.days[k] = w.days[k] || {}; CATS.forEach(c => { w.days[k][c.key] = Number(w.days[k][c.key]) || 0; }); });
+}
+
+$("prevWeek").onclick = () => { weekStart.setDate(weekStart.getDate() - 7); dayIdx = 4; subscribeWeek(); };
+$("nextWeek").onclick = () => { if (isThisWeek()) return; weekStart.setDate(weekStart.getDate() + 7); dayIdx = isThisWeek() ? todayIdx : 4; subscribeWeek(); };
+
+render();
+
+(async () => {
+  try { db = window.claude?.use ? await window.claude.use("db") : null; } catch { db = null; }
+  if (!db) { $("status").textContent = "Saved data isn't available in this view. Open the tracker on claude.ai to log numbers."; canWrite = false; render(); return; }
+  try { const u = await window.claude.use("user"); const c = u ? await u.can("data.write") : null; if (c === false) canWrite = false; } catch {}
+  const loadTimer = setTimeout(() => { $("status").textContent = "Still reaching saved data. Numbers shown may be out of date."; }, 10000);
+  db.collection("weeks").onSnapshot((snap) => {
+    if (!snap.metadata.fromCache) { clearTimeout(loadTimer); if ($("status").textContent.startsWith("Connecting") || $("status").textContent.startsWith("Still")) $("status").textContent = canWrite ? "Up to date. Changes save automatically." : "View only."; }
+    history = snap.docs.map(d => { const x = JSON.parse(JSON.stringify(d.data())); x.weekOf = x.weekOf || d.id; normalize(x); return x; });
+    renderHistory();
+  }, () => { clearTimeout(loadTimer); $("status").textContent = "Couldn't load past weeks. Reload to try again."; });
+  subscribeWeek();
+})();
+</script>
