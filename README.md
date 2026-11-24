@@ -24,14 +24,16 @@ One document per week in the artifact database, collection `weeks`, id = that we
 ```json
 {
   "weekOf": "2026-11-23",
-  "days": { "mon": { "f2f": 0, "bread": 0, "contacts": 0, "events": 0, "hours": 0, "thanks": 0, "referrals": 0, "shows": 0 }, "tue": {}, "wed": {}, "thu": {}, "fri": {} },
+  "days": { "mon": { "f2f": ["Jane Doe"], "bread": [], "contacts": [], "events": [], "hours": [], "thanks": [], "referrals": [], "shows": [] }, "tue": {}, "wed": {}, "thu": {}, "fri": {} },
   "notes": "",
   "recorded": false,
   "recordedAt": "ISO timestamp",
   "recordedScore": 0,
-  "recordedTotals": { "f2f": 0 }
+  "recordedTotals": { "f2f": 1 }
 }
 ```
+
+Every cell is a list of names. **Each name counts as 1 point**, so a category's total is the number of names logged Mon–Fri.
 
 **Weekly score** = average over the 8 categories of `min(total / goal, 1)`, × 100, rounded.
 
