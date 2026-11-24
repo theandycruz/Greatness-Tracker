@@ -209,9 +209,9 @@ const CATS = [
   { key: "contacts",  name: "GREAT Contacts",        sub: "Referral, referral partner, current or past client", goal: 50 },
   { key: "events",    name: "Events",                sub: "Event name",                           goal: 2 },
   { key: "hours",     name: "Hours Prospected",      sub: "Hours spent prospecting (half hours count)", goal: 21, numeric: true, step: 0.5 },
-  { key: "thanks",    name: "Thank You Calls/Cards", sub: "Who got the call or card",                             goal: 10 },
-  { key: "referrals", name: "Referrals",             sub: "Who the referral was for or from",                          goal: 10 },
-  { key: "shows",     name: "Shows Booked",          sub: "Guest or show booked",                            goal: 5 },
+  { key: "thanks",    name: "Thank You Calls/Cards", sub: "Name of the person you called or sent a card",                             goal: 10 },
+  { key: "referrals", name: "Referrals",             sub: "Name of the person referred",                          goal: 10 },
+  { key: "shows",     name: "Shows Booked",          sub: "Name of the person booked",                            goal: 5 },
 ];
 const DAYS = [["mon","Mon"],["tue","Tue"],["wed","Wed"],["thu","Thu"],["fri","Fri"]];
 
@@ -420,7 +420,7 @@ $("nextWeek").onclick = () => { if (isThisWeek()) return; weekStart.setDate(week
 
 // ---- calendar review ----
 const CAL_SERVER = "Google Calendar";
-const REVIEW_CATS = [["f2f","Face to Face"],["bread","Break Bread"],["contacts","GREAT Contact"]];
+const REVIEW_CATS = [["f2f","Face to Face"],["bread","Break Bread"],["contacts","GREAT Contact"],["events","Event"]];
 let mcp = null, calAllowed = false, calState = { key: "", status: "idle", events: [], error: "" };
 function dayDate() { const d = new Date(weekStart); d.setDate(d.getDate() + dayIdx); return d; }
 function calKey() { return iso(dayDate()); }

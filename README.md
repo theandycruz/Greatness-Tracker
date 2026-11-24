@@ -43,7 +43,7 @@ Every cell is a list of names. **Each name counts as 1 point**, so a category's 
 ## Calendar review
 
 The page reads the day's Google Calendar appointments (`list_events`) and prompts for each one:
-Face to Face, Break Bread, GREAT Contact, or Doesn't count. A choice adds the name to that day's list and is kept in
+Face to Face, Break Bread, GREAT Contact, Event, or Doesn't count. A choice adds the name to that day's list and is kept in
 `reviewed: { <calendar event id>: { cat, name, day, title } }` so it isn't asked again (`cat: "skip"` = doesn't count).
 It then suggests Hours Prospected from the length of the counted appointments; confirming writes the day's `hours`
 and sets `hoursReviewed: { <day>: true }`.
