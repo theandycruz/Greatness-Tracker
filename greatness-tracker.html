@@ -87,6 +87,9 @@ header { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: end; justi
 .names li button:hover { background: var(--track); color: var(--ink); }
 .adder { display: flex; gap: 6px; }
 .adder input { flex: 1; min-width: 0; height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; font: inherit; background: var(--surface); color: var(--ink); }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 20px; line-height: 1; }
+.stepper input { width: 72px; height: 36px; text-align: center; font: 600 20px var(--font-display); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
 .adder button { height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 0 12px; font-weight: 600; }
 .cellnames { display: block; font-size: 11px; color: var(--muted); line-height: 1.3; margin-top: 2px; max-width: 120px; overflow-wrap: anywhere; }
 .bar { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; }
@@ -150,7 +153,7 @@ textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-
 
   <section style="display:grid;gap:14px">
     <div class="section-head">
-      <div><h2>Log a day</h2><div class="hint">Add a name for each one. Every name is 1 point.</div></div>
+      <div><h2>Log a day</h2><div class="hint">Add a name for each one. Every name is 1 point. Hours Prospected takes a number.</div></div>
       <div class="days" id="dayTabs" role="group" aria-label="Day"></div>
     </div>
     <div class="cards" id="cards"></div>
@@ -179,7 +182,7 @@ const CATS = [
   { key: "bread",     name: "Break Bread",           sub: "Who you shared a meal with",                                  goal: 5 },
   { key: "contacts",  name: "GREAT Contacts",        sub: "Referral, referral partner, current or past client", goal: 50 },
   { key: "events",    name: "Events",                sub: "Event name",                           goal: 2 },
-  { key: "hours",     name: "Hours Prospected",      sub: "One entry per hour: who or what you prospected", goal: 21 },
+  { key: "hours",     name: "Hours Prospected",      sub: "Hours spent prospecting (half hours count)", goal: 21, numeric: true, step: 0.5 },
   { key: "thanks",    name: "Thank You Calls/Cards", sub: "Who got the call or card",                             goal: 10 },
   { key: "referrals", name: "Referrals",             sub: "Who the referral was for or from",                          goal: 10 },
   { key: "shows",     name: "Shows Booked",          sub: "Guest or show booked",                            goal: 5 },
@@ -201,12 +204,16 @@ let db = null, unsubWeek = null, canWrite = true;
 let history = [];
 
 function blankWeek(id) {
-  const days = {}; DAYS.forEach(([k]) => { days[k] = {}; CATS.forEach(c => days[k][c.key] = []); });
+  const days = {}; DAYS.forEach(([k]) => { days[k] = {}; CATS.forEach(c => days[k][c.key] = c.numeric ? 0 : []); });
   return { weekOf: id, days, notes: "", recorded: false };
 }
 function totals(w) {
-  const t = {}; CATS.forEach(c => t[c.key] = DAYS.reduce((s,[k]) => s + (Array.isArray(w.days?.[k]?.[c.key]) ? w.days[k][c.key].length : 0), 0));
+  const t = {}; CATS.forEach(c => t[c.key] = DAYS.reduce((s,[k]) => s + cellCount(c, w.days?.[k]?.[c.key]), 0));
   return t;
+}
+function cellCount(c, v) {
+  if (c.numeric) return Number(v) || 0;
+  return Array.isArray(v) ? v.length : 0;
 }
 function scoreOf(t) {
   const pct = CATS.reduce((s,c) => s + Math.min(t[c.key] / c.goal, 1), 0) / CATS.length;
@@ -241,14 +248,15 @@ function render() {
   const cards = $("cards"); cards.textContent = "";
   const dk = DAYS[dayIdx][0];
   CATS.forEach(c => {
-    const list = week.days[dk][c.key], tot = t[c.key];
+    const val = week.days[dk][c.key], tot = t[c.key];
+    const list = c.numeric ? [] : val;
     const card = document.createElement("div"); card.className = "card";
     const top = document.createElement("div"); top.className = "top";
     const hd = document.createElement("div");
     const nm = document.createElement("div"); nm.className = "name"; nm.textContent = c.name;
     const sb = document.createElement("div"); sb.className = "sub"; sb.textContent = c.sub;
     hd.append(nm, sb);
-    const dc = document.createElement("div"); dc.className = "daycount num"; dc.textContent = list.length; dc.title = `${list.length} on ${DAYS[dayIdx][1]}`;
+    const dc = document.createElement("div"); dc.className = "daycount num"; const dayVal = cellCount(c, val); dc.textContent = fmtNum(dayVal); dc.title = `${fmtNum(dayVal)} on ${DAYS[dayIdx][1]}`;
     top.append(hd, dc);
     const ul = document.createElement("ul"); ul.className = "names";
     list.forEach((n, i) => {
@@ -263,6 +271,19 @@ function render() {
     [inp, add].forEach(el => el.disabled = !canWrite);
     form.onsubmit = (e) => { e.preventDefault(); const n = inp.value.trim(); if (!n) { inp.focus(); return; } addName(dk, c.key, n); };
     form.append(inp, add);
+    let entry = [ul, form];
+    if (c.numeric) {
+      const st = document.createElement("div"); st.className = "stepper";
+      const minus = document.createElement("button"); minus.textContent = "−"; minus.setAttribute("aria-label", `Subtract ${c.step} from ${c.name}`);
+      const ni = document.createElement("input"); ni.type = "number"; ni.min = "0"; ni.step = String(c.step); ni.value = dayVal; ni.id = `in-${c.key}`; ni.className = "num"; ni.setAttribute("aria-label", `${c.name} on ${DAYS[dayIdx][1]}`);
+      const plus = document.createElement("button"); plus.textContent = "+"; plus.setAttribute("aria-label", `Add ${c.step} to ${c.name}`);
+      [minus, ni, plus].forEach(el => el.disabled = !canWrite);
+      minus.onclick = () => setNum(dk, c.key, Math.max(0, dayVal - c.step));
+      plus.onclick = () => setNum(dk, c.key, dayVal + c.step);
+      ni.onchange = () => setNum(dk, c.key, Math.max(0, Number(ni.value) || 0));
+      st.append(minus, ni, plus);
+      entry = [st];
+    }
     const line = document.createElement("div"); line.className = "weekline num";
     const l1 = document.createElement("span"); l1.textContent = "Week ";
     const b1 = document.createElement("b"); b1.textContent = `${fmtNum(tot)} / ${c.goal}`; l1.append(b1);
@@ -270,7 +291,7 @@ function render() {
     line.append(l1, l2);
     const bar = document.createElement("div"); bar.className = "bar" + (tot >= c.goal ? " hit" : "");
     const fill = document.createElement("span"); fill.style.width = Math.min(100, tot / c.goal * 100) + "%"; bar.append(fill);
-    card.append(top, ul, form, line, bar); cards.append(card);
+    card.append(top, ...entry, line, bar); cards.append(card);
   });
 
   // grid
@@ -287,8 +308,9 @@ function render() {
     const tr = document.createElement("tr");
     const td0 = document.createElement("td"); td0.textContent = c.name; tr.append(td0);
     DAYS.forEach(([k], i) => {
-      const td = document.createElement("td"); const names = week.days[k][c.key];
-      td.textContent = names.length;
+      const td = document.createElement("td"); const cell = week.days[k][c.key];
+      const names = c.numeric ? [] : cell;
+      td.textContent = fmtNum(cellCount(c, cell));
       if (names.length) { const sm = document.createElement("small"); sm.className = "cellnames"; sm.textContent = names.join(", "); td.append(sm); }
       if (i === todayIdx && isThisWeek()) td.className = "today"; tr.append(td);
     });
@@ -325,6 +347,7 @@ function renderHistory() {
 // ---- persistence ----
 let saveTimer = null, saving = Promise.resolve();
 function addName(dk, key, n) { week.days[dk][key].push(n); render(); queueSave(); const el = document.getElementById("in-" + key); if (el) el.focus(); }
+function setNum(dk, key, v) { week.days[dk][key] = Math.round(v * 2) / 2; render(); queueSave(); }
 function removeName(dk, key, i) { week.days[dk][key].splice(i, 1); render(); queueSave(); }
 $("notes").addEventListener("input", (e) => { week.notes = e.target.value; queueSave(); });
 function queueSave() {
@@ -362,7 +385,7 @@ function subscribeWeek() {
 }
 function normalize(w) {
   w.days = w.days || {};
-  DAYS.forEach(([k]) => { w.days[k] = w.days[k] || {}; CATS.forEach(c => { const v = w.days[k][c.key]; w.days[k][c.key] = Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean) : []; }); });
+  DAYS.forEach(([k]) => { w.days[k] = w.days[k] || {}; CATS.forEach(c => { const v = w.days[k][c.key]; w.days[k][c.key] = c.numeric ? (Number(v) || 0) : (Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean) : []); }); });
 }
 
 $("prevWeek").onclick = () => { weekStart.setDate(weekStart.getDate() - 7); dayIdx = 4; subscribeWeek(); };

@@ -24,7 +24,7 @@ One document per week in the artifact database, collection `weeks`, id = that we
 ```json
 {
   "weekOf": "2026-11-23",
-  "days": { "mon": { "f2f": ["Jane Doe"], "bread": [], "contacts": [], "events": [], "hours": [], "thanks": [], "referrals": [], "shows": [] }, "tue": {}, "wed": {}, "thu": {}, "fri": {} },
+  "days": { "mon": { "f2f": ["Jane Doe"], "bread": [], "contacts": [], "events": [], "hours": 2, "thanks": [], "referrals": [], "shows": [] }, "tue": {}, "wed": {}, "thu": {}, "fri": {} },
   "notes": "",
   "recorded": false,
   "recordedAt": "ISO timestamp",
@@ -33,7 +33,7 @@ One document per week in the artifact database, collection `weeks`, id = that we
 }
 ```
 
-Every cell is a list of names. **Each name counts as 1 point**, so a category's total is the number of names logged Mon–Fri.
+Every cell is a list of names. **Each name counts as 1 point**, so a category's total is the number of names logged Mon–Fri. The exception is `hours` (Hours Prospected), which is a number of hours per day (half hours allowed) and is summed.
 
 **Weekly score** = average over the 8 categories of `min(total / goal, 1)`, × 100, rounded.
 
