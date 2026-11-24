@@ -114,6 +114,24 @@ textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-
 .hrow { display: grid; grid-template-columns: 120px 1fr 56px; gap: 12px; align-items: center; font-size: 14px; }
 .hrow .bar { height: 10px; border-radius: 5px; }
 .empty { color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 16px; }
+.cal { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; }
+.cal-head { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; }
+.events { display: grid; gap: 10px; }
+.ev { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+.ev.todo { border-color: var(--warn); box-shadow: inset 3px 0 0 var(--warn); }
+.ev .when { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.ev .title { font-weight: 600; overflow-wrap: anywhere; }
+.ev .loc { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.ev-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ev-row input { flex: 1 1 180px; min-width: 0; height: 34px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; font: inherit; background: var(--surface); color: var(--ink); }
+.pick { height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); padding: 0 10px; font-size: 13px; font-weight: 600; }
+.pick:hover { border-color: var(--accent); color: var(--accent); }
+.pick.skip { font-weight: 500; color: var(--muted); }
+.done-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 600; text-decoration: underline; }
+.hours-prompt { border-radius: 10px; padding: 12px; background: var(--warn-soft); display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.hours-prompt.ok { background: var(--good-soft); }
+.hours-prompt input { width: 80px; height: 34px; text-align: center; border: 1px solid var(--line); border-radius: 8px; font: 600 16px var(--font-display); background: var(--surface); color: var(--ink); }
 .status { font-size: 13px; color: var(--muted); min-height: 1.5em; }
 
 @media (max-width: 560px) {
@@ -149,6 +167,14 @@ textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-
       </div>
       <div class="status" id="status">Connecting to saved data…</div>
     </div>
+  </section>
+
+  <section class="cal" aria-label="Calendar review">
+    <div class="cal-head">
+      <div><h2>Review the calendar</h2><div class="hint" id="calSub">Sort each appointment into a category, then confirm the day's prospecting hours.</div></div>
+      <div class="chips" id="calChips"></div>
+    </div>
+    <div id="calBody"><div class="empty">Connect Google Calendar to see this day's appointments here.</div></div>
   </section>
 
   <section style="display:grid;gap:14px">
@@ -241,7 +267,7 @@ function render() {
   const tabs = $("dayTabs"); tabs.textContent = "";
   DAYS.forEach(([k,label], i) => {
     const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-pressed", String(i === dayIdx));
-    b.onclick = () => { dayIdx = i; render(); }; tabs.append(b);
+    b.onclick = () => { dayIdx = i; render(); maybeLoadCal(); }; tabs.append(b);
   });
 
   // cards
@@ -325,6 +351,7 @@ function render() {
   notes.disabled = !canWrite;
 
   renderHistory();
+  renderCal();
 }
 function fmtNum(n) { return Number.isInteger(n) ? String(n) : n.toFixed(1); }
 
@@ -388,8 +415,161 @@ function normalize(w) {
   DAYS.forEach(([k]) => { w.days[k] = w.days[k] || {}; CATS.forEach(c => { const v = w.days[k][c.key]; w.days[k][c.key] = c.numeric ? (Number(v) || 0) : (Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean) : []); }); });
 }
 
-$("prevWeek").onclick = () => { weekStart.setDate(weekStart.getDate() - 7); dayIdx = 4; subscribeWeek(); };
-$("nextWeek").onclick = () => { if (isThisWeek()) return; weekStart.setDate(weekStart.getDate() + 7); dayIdx = isThisWeek() ? todayIdx : 4; subscribeWeek(); };
+$("prevWeek").onclick = () => { weekStart.setDate(weekStart.getDate() - 7); dayIdx = 4; subscribeWeek(); maybeLoadCal(); };
+$("nextWeek").onclick = () => { if (isThisWeek()) return; weekStart.setDate(weekStart.getDate() + 7); dayIdx = isThisWeek() ? todayIdx : 4; subscribeWeek(); maybeLoadCal(); };
+
+// ---- calendar review ----
+const CAL_SERVER = "Google Calendar";
+const REVIEW_CATS = [["f2f","Face to Face"],["bread","Break Bread"],["contacts","GREAT Contact"]];
+let mcp = null, calAllowed = false, calState = { key: "", status: "idle", events: [], error: "" };
+function dayDate() { const d = new Date(weekStart); d.setDate(d.getDate() + dayIdx); return d; }
+function calKey() { return iso(dayDate()); }
+function guessName(ev) {
+  const m = /Invitee:\s*([^\n]+)/.exec(ev.description || ""); if (m) return m[1].trim();
+  const others = (ev.attendees || []).filter(a => !a.self && !a.resource);
+  if (others.length === 1) return (others[0].displayName || others[0].email.split("@")[0]).trim();
+  return String(ev.summary || "").replace(/[^\p{L}\p{N}\s:'&.,-]/gu, "").replace(/\s+/g, " ").trim();
+}
+function evHours(ev) {
+  if (!ev.start?.dateTime || !ev.end?.dateTime) return 0;
+  return Math.max(0, (new Date(ev.end.dateTime) - new Date(ev.start.dateTime)) / 36e5);
+}
+function fmtTime(s) { return new Date(s).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }); }
+function reviewed() { week.reviewed = week.reviewed || {}; return week.reviewed; }
+
+async function loadCal(force) {
+  if (!mcp) return;
+  const key = calKey();
+  if (!force && calState.key === key && calState.status === "ready") return;
+  calState = { key, status: "loading", events: [], error: "" }; renderCal();
+  const next = new Date(dayDate()); next.setDate(next.getDate() + 1);
+  try {
+    const res = await mcp.callTool(CAL_SERVER, "list_events",
+      { startTime: key + "T00:00:00", endTime: iso(next) + "T00:00:00", orderBy: "startTime", pageSize: 100 },
+      { cache: force ? { staleTime: 0, refresh: true } : { staleTime: 120000, gcTime: 600000 } });
+    if (calKey() !== key) return;
+    const evs = (res.payload && Array.isArray(res.payload.events) ? res.payload.events : [])
+      .filter(e => e && e.status !== "cancelled")
+      .filter(e => !(e.attendees || []).some(a => a.self && a.responseStatus === "declined"))
+      .filter(e => e.start?.dateTime);
+    calAllowed = true; try { localStorage.setItem("gt-cal", "1"); } catch {}
+    calState = { key, status: "ready", events: evs, error: "" };
+  } catch (e) {
+    if (calKey() !== key) return;
+    const code = e && e.code;
+    const msg = {
+      server_not_connected: "Google Calendar isn't connected. Add it in claude.ai Settings → Connectors, then try again.",
+      needs_reauth: "Google Calendar needs reconnecting. Reconnect it in claude.ai Settings → Connectors, then try again.",
+      selection_required: "Choose which Google Calendar connection to use when claude.ai asks, then try again.",
+      not_in_manifest: "Calendar access is turned off for this page. Turn it on from the page's Permissions menu.",
+      approval_required: "Calendar access needs your approval. Press Load again and choose Allow.",
+      blocked_by_policy: "Your organization blocks calendar access from this page.",
+      server_unavailable: "Google Calendar didn't answer. Try again in a moment.",
+    }[code] || "Couldn't load the calendar. Try again in a moment.";
+    calState = { key, status: "error", events: [], error: msg };
+  }
+  renderCal();
+}
+function maybeLoadCal() { if (mcp && calAllowed) loadCal(false); else renderCal(); }
+
+function classify(ev, cat, name) {
+  const dk = DAYS[dayIdx][0];
+  if (cat !== "skip") {
+    if (!name) return;
+    week.days[dk][cat].push(name);
+  }
+  reviewed()[ev.id] = { cat, name: cat === "skip" ? "" : name, day: dk, title: String(ev.summary || "") };
+  render(); queueSave();
+}
+function undoReview(ev) {
+  const rv = reviewed()[ev.id]; if (!rv) return;
+  if (rv.cat !== "skip") { const list = week.days[rv.day]?.[rv.cat]; if (list) { const i = list.lastIndexOf(rv.name); if (i >= 0) list.splice(i, 1); } }
+  delete week.reviewed[ev.id];
+  render(); queueSave();
+}
+function confirmHours(v) {
+  const dk = DAYS[dayIdx][0];
+  week.days[dk].hours = Math.max(0, Math.round((Number(v) || 0) * 2) / 2);
+  week.hoursReviewed = week.hoursReviewed || {}; week.hoursReviewed[dk] = true;
+  render(); queueSave();
+}
+
+function renderCal() {
+  const body = $("calBody"), chips = $("calChips");
+  if (!body) return;
+  body.textContent = ""; chips.textContent = "";
+  const dayLabel = dayDate().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+  $("calSub").textContent = `${dayLabel}: sort each appointment into a category, then confirm the day's prospecting hours.`;
+  const el = (tag, cls, txt) => { const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; };
+
+  if (!mcp) { body.append(el("div", "empty", "Calendar review works when the tracker is open on claude.ai with Google Calendar connected.")); return; }
+  if (!calAllowed || calState.key !== calKey() || calState.status === "idle") {
+    const box = el("div", "empty");
+    box.append(el("span", "", `Pull ${dayLabel}'s appointments from Google Calendar to review them. `));
+    const b = el("button", "btn-primary", "Load calendar"); b.onclick = () => loadCal(false);
+    box.append(b); body.append(box); return;
+  }
+  if (calState.status === "loading") { body.append(el("div", "hint", "Loading appointments…")); return; }
+  if (calState.status === "error") {
+    const box = el("div", "empty", calState.error + " ");
+    const b = el("button", "linkbtn", "Try again"); b.onclick = () => loadCal(true); box.append(b);
+    body.append(box); return;
+  }
+  const evs = calState.events, rv = reviewed();
+  const todo = evs.filter(e => !rv[e.id]).length;
+  const ch = el("span", "chip " + (todo ? "warn" : "good"), todo ? `${todo} to review` : (evs.length ? "All reviewed" : "No appointments"));
+  chips.append(ch);
+  const refresh = el("button", "linkbtn", "Refresh"); refresh.onclick = () => loadCal(true); chips.append(refresh);
+
+  const list = el("div", "events");
+  if (!evs.length) list.append(el("div", "hint", "Nothing on the calendar this day."));
+  evs.forEach(ev => {
+    const done = rv[ev.id];
+    const card = el("div", "ev" + (done ? "" : " todo"));
+    card.append(el("div", "when num", `${fmtTime(ev.start.dateTime)} – ${fmtTime(ev.end.dateTime)} · ${fmtNum(Math.round(evHours(ev) * 4) / 4)} hr`));
+    card.append(el("div", "title", ev.summary || "(No title)"));
+    if (ev.location) card.append(el("div", "loc", ev.location));
+    if (done) {
+      const line = el("div", "done-line");
+      const label = done.cat === "skip" ? "Not counted" : `${(REVIEW_CATS.find(c => c[0] === done.cat) || [,done.cat])[1]}: ${done.name}`;
+      line.append(el("span", "chip " + (done.cat === "skip" ? "" : "good"), label));
+      const u = el("button", "linkbtn", "Undo"); u.disabled = !canWrite; u.onclick = () => undoReview(ev); line.append(u);
+      card.append(line);
+    } else {
+      const row = el("div", "ev-row");
+      const inp = el("input"); inp.type = "text"; inp.value = guessName(ev); inp.maxLength = 80; inp.id = "ev-" + ev.id; inp.setAttribute("aria-label", "Name to log");
+      row.append(inp); card.append(row);
+      const btns = el("div", "ev-row");
+      REVIEW_CATS.forEach(([k, label]) => {
+        const b = el("button", "pick", label); b.disabled = !canWrite;
+        b.onclick = () => { const n = inp.value.trim(); if (!n) { inp.focus(); inp.placeholder = "Add a name first"; return; } classify(ev, k, n); };
+        btns.append(b);
+      });
+      const sk = el("button", "pick skip", "Doesn't count"); sk.disabled = !canWrite; sk.onclick = () => classify(ev, "skip", "");
+      btns.append(sk); card.append(btns);
+    }
+    list.append(card);
+  });
+  body.append(list);
+
+  // hours prompt
+  const dk = DAYS[dayIdx][0];
+  const calHours = Math.round(evs.filter(e => !(rv[e.id] && rv[e.id].cat === "skip")).reduce((s, e) => s + evHours(e), 0) * 2) / 2;
+  const logged = Number(week.days[dk].hours) || 0;
+  const confirmed = week.hoursReviewed && week.hoursReviewed[dk];
+  const hp = el("div", "hours-prompt" + (confirmed ? " ok" : ""));
+  hp.style.marginTop = "12px";
+  const lbl = el("label", "", confirmed
+    ? `Hours Prospected confirmed for ${DAYS[dayIdx][1]}: ${fmtNum(logged)} hr. Calendar shows ${fmtNum(calHours)} hr of counted appointments.`
+    : `How many hours did you prospect ${DAYS[dayIdx][1]}? Calendar shows ${fmtNum(calHours)} hr of counted appointments${logged ? `; you've logged ${fmtNum(logged)}` : ""}.`);
+  lbl.htmlFor = "hoursConfirm";
+  const hi = el("input"); hi.type = "number"; hi.min = "0"; hi.step = "0.5"; hi.id = "hoursConfirm"; hi.className = "num";
+  hi.value = confirmed ? logged : (logged || calHours); hi.disabled = !canWrite;
+  const hb = el("button", confirmed ? "btn-ghost" : "btn-primary", confirmed ? "Update hours" : "Confirm hours"); hb.disabled = !canWrite;
+  hb.onclick = () => confirmHours(hi.value);
+  hp.append(lbl, hi, hb);
+  body.append(hp);
+}
 
 render();
 
@@ -404,5 +584,8 @@ render();
     renderHistory();
   }, () => { clearTimeout(loadTimer); $("status").textContent = "Couldn't load past weeks. Reload to try again."; });
   subscribeWeek();
+  try { mcp = await window.claude.use("mcp"); } catch { mcp = null; }
+  try { calAllowed = localStorage.getItem("gt-cal") === "1"; } catch {}
+  maybeLoadCal();
 })();
 </script>
