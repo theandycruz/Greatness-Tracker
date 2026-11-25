@@ -49,3 +49,13 @@ It then suggests Hours Prospected from the length of the counted appointments; c
 and sets `hoursReviewed: { <day>: true }`.
 
 A weekday reminder at 4:47 PM Pacific prompts the review.
+
+## Weekly CSV export (Step 2 after recording)
+
+Once a week is recorded, the page shows **Save CSV to Dropbox**. It writes
+`/Andy Cruz/Cruz Productions Inc/Greatness_Tracker_Results/Greatness_Tracker_Week_<monday>.csv`
+(`_v2`, `_v3`… if that week was already saved) and stores `exported: { path, at, score }` on the week.
+
+CSV columns: `Week Of, Row Type, Day, Date, Category, Entry, Points, Goal, Calendar Appointment`.
+Row types: `Entry` (each name, or the day's hours), `Not Counted` (calendar appointments marked Doesn't count),
+`Category Total`, `Weekly Score`, `Notes`.

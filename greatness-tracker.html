@@ -136,6 +136,9 @@ textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-
 .hours-prompt { border-radius: 10px; padding: 12px; background: var(--warn-soft); display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .hours-prompt.ok { background: var(--good-soft); }
 .hours-prompt input { width: 80px; height: 34px; text-align: center; border: 1px solid var(--line); border-radius: 8px; font: 600 16px var(--font-display); background: var(--surface); color: var(--ink); }
+.export { border-radius: 10px; padding: 10px 12px; background: var(--warn-soft); display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 14px; }
+.export.ok { background: var(--good-soft); }
+.export .path { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; width: 100%; }
 .status { font-size: 13px; color: var(--muted); min-height: 1.5em; }
 
 @media (max-width: 560px) {
@@ -172,6 +175,7 @@ textarea { width: 100%; min-height: 80px; border: 1px solid var(--line); border-
         <button class="btn-primary" id="recordBtn">Record Friday score</button>
         <span class="hint" id="recordHint">Locks in this week's totals for the history.</span>
       </div>
+      <div class="export" id="exportRow" hidden></div>
       <div class="status" id="status">Connecting to saved data…</div>
     </div>
   </section>
@@ -269,6 +273,7 @@ function render() {
   else mk(isThisWeek() ? "Not recorded yet" : "Never recorded", "warn");
   $("recordBtn").textContent = week.recorded ? "Re-record score" : "Record Friday score";
   $("recordBtn").disabled = !canWrite;
+  renderExport();
 
   // day tabs
   const tabs = $("dayTabs"); tabs.textContent = "";
@@ -359,6 +364,96 @@ function render() {
 
   renderHistory();
   renderCal();
+}
+// ---- weekly CSV export to Dropbox ----
+const DROPBOX = "Dropbox";
+const EXPORT_DIR = "/Andy Cruz/Cruz Productions Inc/Greatness_Tracker_Results";
+let exportBusy = false, exportMsg = "";
+function csvCell(v) {
+  let t = v == null ? "" : String(v);
+  if (typeof v === "string" && /^[=+\-@]/.test(t)) t = "'" + t;
+  return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+function buildCsv(w) {
+  const t = totals(w), sc = w.recorded && w.recordedScore != null ? w.recordedScore : scoreOf(t);
+  const head = ["Week Of","Row Type","Day","Date","Category","Entry","Points","Goal","Calendar Appointment"];
+  const rows = [head];
+  const rv = w.reviewed || {};
+  const apptFor = (day, cat, name) => { const hit = Object.values(rv).find(x => x && x.day === day && x.cat === cat && x.name === name); return hit ? hit.title : ""; };
+  DAYS.forEach(([dk, label], i) => {
+    const d = parseIso(w.weekOf); d.setDate(d.getDate() + i); const date = iso(d);
+    CATS.forEach(c => {
+      const v = w.days[dk][c.key];
+      if (c.numeric) { if (Number(v)) rows.push([w.weekOf, "Entry", label, date, c.name, fmtNum(Number(v)) + " hr", Number(v), "", ""]); }
+      else v.forEach(n => rows.push([w.weekOf, "Entry", label, date, c.name, n, 1, "", apptFor(dk, c.key, n)]));
+    });
+    Object.values(rv).filter(x => x && x.day === dk && x.cat === "skip").forEach(x => rows.push([w.weekOf, "Not Counted", label, date, "", "", 0, "", x.title]));
+  });
+  CATS.forEach(c => rows.push([w.weekOf, "Category Total", "", "", c.name, t[c.key] >= c.goal ? "Goal hit" : `${fmtNum(c.goal - t[c.key])} to go`, fmtNum(t[c.key]), c.goal, ""]));
+  rows.push([w.weekOf, "Weekly Score", "", "", "", `${hits(t)} of ${CATS.length} goals hit` + (w.recordedAt ? `; recorded ${w.recordedAt}` : ""), sc, 100, ""]);
+  if (w.notes) rows.push([w.weekOf, "Notes", "", "", "", w.notes, "", "", ""]);
+  return "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+async function exportWeek() {
+  if (!mcp || exportBusy) return;
+  exportBusy = true; exportMsg = "Saving to Dropbox…"; renderExport();
+  const w = JSON.parse(JSON.stringify(week)), csv = buildCsv(w);
+  const base = `${EXPORT_DIR}/Greatness_Tracker_Week_${w.weekOf}`;
+  let done = null, lastErr = null;
+  for (let n = 1; n <= 9 && !done; n++) {
+    const path = base + (n === 1 ? "" : `_v${n}`) + ".csv";
+    try {
+      const res = await mcp.callTool(DROPBOX, "create_file", { path, content: csv }, { cache: false });
+      const f = res.payload && res.payload.file;
+      done = (f && (f.path_display || f.name)) || path;
+    } catch (e) {
+      lastErr = e;
+      const txt = (e && (e.message || "")) + " " + JSON.stringify((e && e.result) || "");
+      if (e && e.code === "tool_error" && /ALREADY_EXISTS/i.test(txt)) continue;
+      break;
+    }
+  }
+  exportBusy = false;
+  if (done) {
+    week.exported = { path: done, at: new Date().toISOString(), score: w.recordedScore ?? null };
+    exportMsg = ""; render(); queueSave();
+    return;
+  }
+  const code = lastErr && lastErr.code;
+  exportMsg = ({
+    server_not_connected: "Dropbox isn't connected. Add it in claude.ai Settings → Connectors, then try again.",
+    needs_reauth: "Dropbox needs reconnecting in claude.ai Settings → Connectors.",
+    selection_required: "Choose which Dropbox connection to use when claude.ai asks, then try again.",
+    not_in_manifest: "Dropbox access is turned off for this page. Turn it on from the page's Permissions menu.",
+    approval_required: "Saving to Dropbox needs your approval. Tap Save again and choose Allow.",
+    blocked_by_policy: "Your organization blocks Dropbox from this page.",
+    server_unavailable: "Dropbox didn't answer. Check the Greatness_Tracker_Results folder before trying again, in case the file was saved.",
+    upstream_error: "Dropbox didn't confirm the save. Check the Greatness_Tracker_Results folder before trying again.",
+  })[code] || (code === "tool_error" ? "Dropbox refused the file: " + String(lastErr.message || "").slice(0, 140) : "Couldn't save to Dropbox. Try again in a moment.");
+  renderExport();
+}
+function renderExport() {
+  const box = $("exportRow"); if (!box) return;
+  box.textContent = "";
+  if (!week.recorded) { box.hidden = true; return; }
+  box.hidden = false;
+  const ex = week.exported;
+  const stale = ex && ex.score != null && week.recordedScore != null && ex.score !== week.recordedScore;
+  box.className = "export" + (ex && !stale ? " ok" : "");
+  const msg = document.createElement("span");
+  if (exportMsg) msg.textContent = exportMsg;
+  else if (ex && !stale) msg.textContent = `Step 2 done: CSV saved to Dropbox ${new Date(ex.at).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}.`;
+  else if (stale) msg.textContent = "Step 2: the score changed since the last export. Save an updated CSV to Dropbox.";
+  else msg.textContent = "Step 2: save this week's results as a CSV in Dropbox.";
+  box.append(msg);
+  if (!mcp) { const h = document.createElement("span"); h.className = "hint"; h.textContent = "Open the tracker on claude.ai to save to Dropbox."; box.append(h); return; }
+  if (!exportBusy) {
+    const b = document.createElement("button");
+    b.className = ex && !stale ? "linkbtn" : "btn-primary";
+    b.textContent = ex && !stale ? "Save again" : "Save CSV to Dropbox";
+    b.disabled = !canWrite; b.onclick = exportWeek; box.append(b);
+  }
+  if (ex) { const p = document.createElement("span"); p.className = "path"; p.textContent = ex.path; box.append(p); }
 }
 function fmtNum(n) { return Number.isInteger(n) ? String(n) : n.toFixed(1); }
 
@@ -592,6 +687,7 @@ render();
   }, () => { clearTimeout(loadTimer); $("status").textContent = "Couldn't load past weeks. Reload to try again."; });
   subscribeWeek();
   try { mcp = await window.claude.use("mcp"); } catch { mcp = null; }
+  renderExport();
   try { calAllowed = localStorage.getItem("gt-cal") === "1"; } catch {}
   maybeLoadCal();
 })();
